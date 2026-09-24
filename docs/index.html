@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Einkauf</title>
+<meta name="theme-color" content="#0F1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Einkauf">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0F1115;
+    --card: #1A1D24;
+    --line: #2A2E38;
+    --text: #FFFFFF;
+    --grey: #8A90A0;
+    --dim: #555B68;
+    --blue: #4F8CFF;
+    --green: #3DDC84;
+    --orange: #FFB454;
+    --sheet: #22262F;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    min-height: 100vh; min-height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+  }
+  button, input { font: inherit; color: inherit; }
+  .wrap { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-block: 0 32px; }
+
+  /* Tabs */
+  .tabs {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    display: flex; gap: 6px; padding: 14px 16px 10px; max-width: 560px; margin: 0 auto;
+  }
+  .tab {
+    flex: 1; border: 0; border-radius: 12px; background: var(--card); color: var(--grey);
+    padding: 8px 0; font-size: 13px; line-height: 1.25; cursor: pointer; font-variant-numeric: tabular-nums;
+  }
+  .tab.month { flex: 1.4; }
+  .tab.on { background: var(--blue); color: #fff; font-weight: 700; }
+  .tab small { display: block; font-size: 13px; }
+
+  h1 { font-size: 24px; margin: 8px 0 2px; text-wrap: balance; }
+  .muted { color: var(--grey); font-size: 14px; }
+  .hint { color: var(--dim); font-size: 13px; }
+  .sync { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; font-size: 13px; color: var(--grey); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.ok { background: var(--green); } .dot.busy { background: var(--blue); } .dot.err { background: var(--orange); }
+  .linkbtn { background: none; border: 0; color: var(--blue); padding: 0; font-size: 13px; cursor: pointer; }
+
+  /* Monatsliste */
+  .cols, .row { display: grid; grid-template-columns: 26px 48px minmax(0, 1fr) 42px 54px; gap: 6px; align-items: center; }
+  .cols { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin: 12px 0 6px; }
+  .cols span { text-align: center; } .cols span.l { text-align: left; padding-left: 10px; }
+  .item { background: var(--bg); padding: 3px 0; position: relative; touch-action: pan-y; }
+  .row input, .chip {
+    height: 46px; width: 100%; border: 0; border-radius: 10px; background: var(--card);
+    padding: 0 10px; outline: none; font-size: 16px;
+  }
+  .row input.num { text-align: center; padding: 0 4px; font-variant-numeric: tabular-nums; }
+  .row input.calc { color: var(--blue); font-weight: 600; }
+  .row input:focus { box-shadow: inset 0 0 0 2px var(--blue); }
+  .row input::placeholder { color: var(--dim); }
+  .chip { display: grid; place-items: center; color: var(--dim); font-size: 14px; cursor: pointer; }
+  .chip.set { color: var(--blue); font-weight: 700; }
+  .chip.small { font-size: 12px; }
+  .handle {
+    height: 46px; display: grid; place-items: center; color: var(--dim); font-size: 22px;
+    touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+  }
+  .handle.active { color: var(--blue); }
+  .calcnote { color: var(--grey); font-size: 12px; padding: 2px 0 6px 32px; }
+  .stats { color: var(--grey); font-size: 14px; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
+  .line { display: flex; align-items: center; gap: 6px; margin-top: 16px; }
+  .line .grow { flex: 1; color: var(--grey); font-size: 14px; }
+  .seg { border: 0; border-radius: 10px; background: var(--card); color: var(--grey); padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  .seg.on { background: var(--blue); color: #fff; font-weight: 700; }
+  .outline {
+    display: block; width: 100%; margin-top: 28px; padding: 14px; border-radius: 12px;
+    background: none; border: 1px solid var(--line); color: var(--grey); font-size: 15px; cursor: pointer;
+  }
+  .dragging { z-index: 3; opacity: .92; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+
+  /* Wochenliste */
+  .bar { height: 8px; border-radius: 6px; background: var(--card); overflow: hidden; margin: 8px 0 6px; }
+  .bar i { display: block; height: 100%; border-radius: 6px; background: var(--blue); }
+  .bar i.full { background: var(--green); }
+  .entry {
+    display: flex; align-items: center; gap: 14px; padding: 12px 4px; background: var(--bg);
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer; position: relative;
+  }
+  .box { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--grey); flex: none; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: var(--bg); }
+  .box.done { background: var(--green); border-color: var(--green); }
+  .box.part { border-color: var(--orange); color: var(--orange); }
+  .etext { flex: 1; min-width: 0; }
+  .ename { font-size: 18px; overflow-wrap: anywhere; }
+  .done .ename, .ename.done { color: var(--dim); text-decoration: line-through; }
+  .enote { font-size: 13px; color: var(--grey); }
+  .enote.part { color: var(--orange); }
+  .entry .handle { height: 40px; width: 40px; }
+  .sep { height: 1px; background: var(--line); margin: 10px 0 6px; }
+  .add { display: flex; gap: 8px; margin-top: 22px; }
+  .add input { flex: 1; min-width: 0; height: 50px; border: 0; border-radius: 12px; background: var(--card); padding: 0 14px; outline: none; font-size: 16px; }
+  .add button { width: 50px; height: 50px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-size: 24px; cursor: pointer; }
+
+  /* Dialoge */
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet {
+    background: var(--sheet); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0;
+    padding: 18px 20px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 88vh; overflow: auto;
+  }
+  .sheet h2 { font-size: 19px; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .sheet p { color: var(--grey); font-size: 14px; margin: 0 0 10px; }
+  .sheet .opt { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 15px 2px; font-size: 17px; cursor: pointer; }
+  .sheet .opt:last-of-type { border-bottom: 0; }
+  .sheet label.lbl { display: block; color: var(--grey); font-size: 13px; margin: 12px 0 4px; }
+  .sheet input.fld, .sheet textarea { width: 100%; height: 48px; border: 0; border-radius: 10px; background: var(--card); padding: 0 12px; font-size: 18px; outline: none; }
+  .sheet textarea { height: 96px; padding: 10px 12px; font-size: 14px; resize: none; font-family: ui-monospace, Menlo, monospace; }
+  .sheet .check { display: flex; align-items: center; gap: 12px; padding: 12px 2px; font-size: 17px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .sheet .check input { width: 22px; height: 22px; accent-color: var(--blue); }
+  .sheet .result { font-size: 18px; font-weight: 700; margin: 16px 0 4px; }
+  .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  .btns button { border: 0; border-radius: 10px; padding: 11px 16px; font-size: 16px; background: var(--card); color: var(--text); cursor: pointer; }
+  .btns button.pri { background: var(--blue); color: #fff; font-weight: 700; }
+  .btns button.warn { color: var(--orange); }
+  .btns .spacer { flex: 1; }
+  .code { word-break: break-all; font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--grey); background: var(--card); border-radius: 10px; padding: 10px; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--sheet); color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<nav class="tabs" id="tabs"></nav>
+<main class="wrap" id="main"></main>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
