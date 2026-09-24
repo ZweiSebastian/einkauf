@@ -122,7 +122,7 @@ class MainActivity : ComponentActivity() {
                         week = if (o.has("week")) o.optInt("week") else null,
                     )
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { rows.clear() }
         } else {
             // Übernahme der alten Textliste aus Version 1.x
             for (l in (prefs.getString("text", "") ?: "").lines()) {
