@@ -28,7 +28,10 @@ Jede Zeile hat eigene Felder: **Menge | Artikel | da | Woche**.
 
 Komplett vorrätige Artikel stehen abgehakt mit „alles schon da“ in der Liste.
 Unten in jeder Woche gibt es ein Feld für Nachträge nur für diese Woche („3 Avocados“).
-Alles wird nur lokal auf dem Handy gespeichert.
+## Abgleich mit dem iPhone
+Oben auf „Abgleich einrichten“ tippen und den Verbindungs-Code (`EK1-…`) einfügen. Danach gleicht die App alle paar
+Sekunden mit der gemeinsamen Liste ab (Supabase). Das iPhone nutzt die Web-App **einkauf-web** mit demselben Code.
+Ohne Code bleibt alles nur lokal auf dem Handy.
 
 ## APK bauen (nur Browser nötig)
 1. Neues Repository auf github.com anlegen.

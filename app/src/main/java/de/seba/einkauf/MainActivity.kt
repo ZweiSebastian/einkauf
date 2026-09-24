@@ -1,6 +1,14 @@
 package de.seba.einkauf
 
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.widget.Toast
+import java.util.UUID
+import java.util.concurrent.Executors
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -47,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     /** Eine Zeile der Monatsliste (bearbeitbar). */
     private class Row(
+        var id: String = UUID.randomUUID().toString(),
         var qty: Int = 1,
         var name: String = "",
         var have: Int = 0,
@@ -66,6 +75,22 @@ class MainActivity : ComponentActivity() {
     private var checked = mutableSetOf<String>()
     private var bought = mutableMapOf<String, Int>() // teilweise gekauft: key -> Anzahl
     private var tab = 0 // 0 = Monat, 1..weeks = Woche
+
+    // Abgleich
+    private var doc: JSONObject = SyncDoc.empty()
+    private var cfg: SyncDoc.Config? = null
+    private val io = Executors.newSingleThreadExecutor()
+    private var syncing = false
+    private var syncAgain = false
+    private var syncState = "off"
+    private var lastSync = 0L
+    private var lastType = 0L
+    private var monthSyncLine: TextView? = null
+    private var weekSyncLine: TextView? = null
+    private val syncTask = Runnable { sync() }
+    private val pollTask = object : Runnable {
+        override fun run() { sync(); handler.postDelayed(this, 5000) }
+    }
 
     // Views
     private lateinit var tabBar: LinearLayout
@@ -90,6 +115,17 @@ class MainActivity : ComponentActivity() {
             val n = if (i > 0) s.substring(0, i).toIntOrNull() else null
             if (n != null) bought[s.substring(i + 1)] = n
         }
+        // gemeinsames Datenmodell (ab Version 3.0); ältere Daten werden einmalig übernommen
+        val savedDoc = prefs.getString("doc", null)
+        if (savedDoc != null) {
+            doc = try { SyncDoc.merge(JSONObject(savedDoc), null) } catch (e: Exception) { SyncDoc.empty() }
+            stateFromDoc()
+        } else {
+            doc = buildDoc(SyncDoc.empty())
+            prefs.edit().putString("doc", doc.toString()).apply()
+        }
+        cfg = prefs.getString("sync", null)?.let { SyncDoc.decodeConnect(it) }
+        if (cfg != null) syncState = "busy"
         tab = prefs.getInt("tab", 0).coerceIn(0, weeks)
 
         val root = LinearLayout(this).apply {
@@ -109,10 +145,18 @@ class MainActivity : ComponentActivity() {
         render()
     }
 
+    override fun onResume() {
+        super.onResume()
+        handler.removeCallbacks(pollTask)
+        handler.post(pollTask)
+    }
+
     override fun onPause() {
         super.onPause()
+        handler.removeCallbacks(pollTask)
         handler.removeCallbacks(saveRowsTask)
         saveRows()
+        sync()
     }
 
     // ---------- Daten ----------
@@ -150,19 +194,248 @@ class MainActivity : ComponentActivity() {
         rows.removeAll { it.name.isBlank() }
     }
 
-    private fun saveRows() {
-        val arr = JSONArray()
-        for (r in rows) {
-            if (r.name.isBlank()) continue
-            arr.put(JSONObject().apply {
-                put("qty", r.qty); put("name", r.name.trim()); put("have", r.have)
-                if (r.weeksSel.isNotEmpty()) put("weeks", JSONArray(r.weeksSel.sorted()))
-                r.perPack?.let { put("perPack", it) }
-                r.perDay?.let { put("perDay", it) }
-                r.days?.let { put("days", it) }
-            })
+    /** Speichert den aktuellen Stand (mit Zeitstempeln für den Abgleich). */
+    private fun saveRows() = commit()
+
+    private fun commit() {
+        val next = buildDoc(doc)
+        if (SyncDoc.canon(next) != SyncDoc.canon(doc)) {
+            doc = next
+            prefs.edit().putString("doc", doc.toString()).apply()
+            scheduleSync(700)
         }
-        prefs.edit().putString("items", arr.toString()).apply()
+    }
+
+    private fun rowJson(r: Row): JSONObject {
+        val o = JSONObject()
+            .put("name", r.name)
+            .put("qty", r.qty)
+            .put("have", r.have)
+            .put("weeks", JSONArray(r.weeksSel.sorted()))
+        r.perPack?.let { o.put("perPack", it) }
+        r.perDay?.let { o.put("perDay", it) }
+        r.days?.let { o.put("days", it) }
+        return o
+    }
+
+    /** Neuer Stand aus der Oberfläche; nur Geändertes bekommt einen neuen Zeitstempel. */
+    private fun buildDoc(prev: JSONObject): JSONObject {
+        val now = System.currentTimeMillis()
+        val d = SyncDoc.merge(prev, null, now)
+        val items = d.getJSONObject("items")
+        val live = rows.filter { it.name.isNotBlank() }
+        val liveIds = live.map { it.id }.toSet()
+        for (r in live) {
+            val o = rowJson(r)
+            val p = items.optJSONObject(r.id)
+            val same = p != null && !p.optBoolean("del") &&
+                SyncDoc.canon(JSONObject(p.toString()).apply { remove("t") }) == SyncDoc.canon(o)
+            if (!same) items.put(r.id, o.put("t", now))
+        }
+        for (id in items.keys().asSequence().toList()) {
+            val p = items.getJSONObject(id)
+            // nur Artikel löschen, die hier sichtbar waren (nicht die, die jemand gerade eintippt)
+            if (!p.optBoolean("del") && p.optString("name").isNotBlank() && id !in liveIds) {
+                items.put(id, JSONObject().put("del", true).put("t", now))
+            }
+        }
+        val ids = live.map { it.id }
+        val prevIds = SyncDoc.normalizeOrder(d.getJSONObject("order").optJSONArray("ids"), items)
+        val shown = prevIds.filter { it in liveIds }
+        if (ids != shown) d.put("order", JSONObject().put("ids", JSONArray(ids)).put("t", now))
+
+        val ch = d.getJSONObject("checked")
+        for (k in checked) if (ch.optJSONObject(k)?.optBoolean("v") != true) ch.put(k, JSONObject().put("v", true).put("t", now))
+        for (k in ch.keys().asSequence().toList()) {
+            if (ch.getJSONObject(k).optBoolean("v") && k !in checked) ch.put(k, JSONObject().put("v", false).put("t", now))
+        }
+        val bo = d.getJSONObject("bought")
+        for ((k, n) in bought) if (bo.optJSONObject(k)?.optInt("n") != n) bo.put(k, JSONObject().put("n", n).put("t", now))
+        for (k in bo.keys().asSequence().toList()) {
+            if (bo.getJSONObject(k).optInt("n") > 0 && (bought[k] ?: 0) == 0) bo.put(k, JSONObject().put("n", 0).put("t", now))
+        }
+        if (d.getJSONObject("weeks").optInt("v", 4) != weeks) d.put("weeks", JSONObject().put("v", weeks).put("t", now))
+        return d
+    }
+
+    /** Oberfläche aus dem gemeinsamen Stand aufbauen. */
+    private fun stateFromDoc() {
+        val items = doc.getJSONObject("items")
+        val ids = SyncDoc.normalizeOrder(doc.getJSONObject("order").optJSONArray("ids"), items)
+        rows.clear()
+        for (id in ids) {
+            val o = items.getJSONObject(id)
+            val w = o.optJSONArray("weeks")
+            rows += Row(
+                id = id,
+                qty = o.optInt("qty", 1).coerceAtLeast(1),
+                name = o.optString("name", ""),
+                have = o.optInt("have", 0).coerceAtLeast(0),
+                weeksSel = if (w == null) emptySet() else (0 until w.length()).map { w.optInt(it) }.filter { it > 0 }.toSet(),
+                perPack = if (o.has("perPack") && !o.isNull("perPack")) o.optDouble("perPack") else null,
+                perDay = if (o.has("perDay") && !o.isNull("perDay")) o.optDouble("perDay") else null,
+                days = if (o.has("days") && !o.isNull("days")) o.optInt("days") else null,
+            )
+        }
+        rows.removeAll { it.name.isBlank() }
+        val ch = doc.getJSONObject("checked")
+        checked = ch.keys().asSequence().filter { ch.getJSONObject(it).optBoolean("v") }.toMutableSet()
+        val bo = doc.getJSONObject("bought")
+        bought = bo.keys().asSequence().filter { bo.getJSONObject(it).optInt("n") > 0 }
+            .associateWith { bo.getJSONObject(it).optInt("n") }.toMutableMap()
+        weeks = doc.getJSONObject("weeks").optInt("v", 4).coerceIn(4, 5)
+    }
+
+    // ---------- Abgleich ----------
+
+    private fun scheduleSync(ms: Long) {
+        if (cfg == null) return
+        handler.removeCallbacks(syncTask)
+        handler.postDelayed(syncTask, ms)
+    }
+
+    private fun sync() {
+        val c = cfg ?: return
+        if (syncing) { syncAgain = true; return }
+        if (tab == 0 && currentFocus is EditText && System.currentTimeMillis() - lastType < 2500) {
+            scheduleSync(2500); return
+        }
+        handler.removeCallbacks(saveRowsTask)
+        commit()
+        syncing = true
+        if (lastSync == 0L) setSyncState("busy")
+        val local = SyncDoc.copy(doc)
+        io.execute {
+            var result: JSONObject? = null
+            try {
+                val remote = SyncDoc.Remote(c)
+                var (server, rev) = remote.get()
+                var merged = SyncDoc.merge(local, server)
+                for (i in 0 until 4) {
+                    val srv = server
+                    if (srv != null && SyncDoc.canon(merged) == SyncDoc.canon(SyncDoc.merge(srv, srv))) break
+                    val (ok, data, r) = remote.put(merged, rev)
+                    if (ok) break
+                    server = data; rev = r
+                    merged = SyncDoc.merge(merged, data)
+                }
+                result = merged
+            } catch (e: Exception) {
+                android.util.Log.w("Einkauf", "Abgleich fehlgeschlagen", e)
+            }
+            val res = result
+            handler.post {
+                syncing = false
+                if (cfg != null) {
+                    if (res != null) { applyRemote(res); lastSync = System.currentTimeMillis(); setSyncState("ok") }
+                    else setSyncState("err")
+                }
+                if (syncAgain) { syncAgain = false; scheduleSync(300) }
+            }
+        }
+    }
+
+    /** Stand vom Server einarbeiten; eigene Änderungen von eben bleiben erhalten. */
+    private fun applyRemote(m: JSONObject) {
+        handler.removeCallbacks(saveRowsTask)
+        commit()
+        val next = SyncDoc.merge(doc, m)
+        if (SyncDoc.canon(next) == SyncDoc.canon(doc)) return
+        doc = next
+        prefs.edit().putString("doc", doc.toString()).apply()
+        stateFromDoc()
+        if (tab > weeks) tab = weeks
+        render()
+    }
+
+    private fun setSyncState(s: String) {
+        syncState = s
+        monthSyncLine?.let { paintSync(it) }
+        weekSyncLine?.let { paintSync(it) }
+    }
+
+    private fun syncLineView(): TextView = TextView(this).apply {
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        setPadding(0, dp(4), 0, dp(6))
+        setOnClickListener { settingsDialog() }
+        paintSync(this)
+    }
+
+    private fun paintSync(t: TextView) {
+        val (dot, label, link) = when {
+            cfg == null -> Triple(dim, "Nur auf diesem Gerät", "Abgleich einrichten")
+            syncState == "err" -> Triple(orange, "Offline – wird später abgeglichen", "Abgleich")
+            syncState == "busy" && lastSync == 0L -> Triple(blue, "Verbinde …", "Abgleich")
+            else -> Triple(green, "Abgeglichen", "Abgleich")
+        }
+        val sb = SpannableStringBuilder()
+        fun add(text: String, color: Int) {
+            val start = sb.length
+            sb.append(text)
+            sb.setSpan(ForegroundColorSpan(color), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        add("● ", dot); add("$label   ", grey); add(link, blue)
+        t.text = sb
+    }
+
+    private fun settingsDialog() {
+        val c = cfg
+        val b = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Abgleich zwischen euren Handys")
+        if (c == null) {
+            val input = EditText(this).apply {
+                hint = "EK1-…"
+                minLines = 3
+                gravity = Gravity.TOP or Gravity.START
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            }
+            val wrap = FrameLayout(this).apply { setPadding(dp(24), dp(8), dp(24), 0); addView(input) }
+            val d = b.setMessage("Füge den Verbindungs-Code ein (beginnt mit EK1-). Danach seht ihr auf beiden Handys dieselbe Liste.")
+                .setView(wrap)
+                .setPositiveButton("Verbinden", null)
+                .setNegativeButton("Abbrechen", null)
+                .create()
+            d.setOnShowListener {
+                d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val cc = SyncDoc.decodeConnect(input.text.toString())
+                    if (cc == null) input.error = "Kein gültiger Code (beginnt mit EK1-)"
+                    else {
+                        cfg = cc
+                        prefs.edit().putString("sync", SyncDoc.encodeConnect(cc)).apply()
+                        lastSync = 0L
+                        setSyncState("busy")
+                        d.dismiss()
+                        sync()
+                    }
+                }
+            }
+            d.show()
+        } else {
+            val code = SyncDoc.encodeConnect(c)
+            val tv = TextView(this).apply {
+                text = code
+                setTextIsSelectable(true)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.MONOSPACE
+                setPadding(dp(24), dp(8), dp(24), 0)
+            }
+            b.setMessage("Verbunden. Änderungen werden alle paar Sekunden abgeglichen. Mit diesem Code verbindest du ein weiteres Gerät, z. B. das iPhone:")
+                .setView(tv)
+                .setPositiveButton("Code kopieren") { _, _ ->
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("Einkauf", code))
+                    Toast.makeText(this, "Kopiert", Toast.LENGTH_SHORT).show()
+                }
+                .setNeutralButton("Trennen") { _, _ ->
+                    cfg = null
+                    prefs.edit().remove("sync").apply()
+                    setSyncState("off")
+                }
+                .setNegativeButton("Fertig", null)
+                .show()
+        }
     }
 
     private fun scheduleSave() {
@@ -187,10 +460,7 @@ class MainActivity : ComponentActivity() {
 
     private fun entries(): List<Planner.Entry> = Planner.split(items(), weeks)
 
-    private fun saveChecked() = prefs.edit()
-        .putStringSet("checked", HashSet(checked))
-        .putStringSet("bought", bought.map { "${it.value}|${it.key}" }.toHashSet())
-        .apply()
+    private fun saveChecked() = commit()
 
     private fun isDone(e: Planner.Entry) =
         e.covered || e.key in checked || (bought[e.key] ?: 0) >= e.qty
@@ -200,12 +470,23 @@ class MainActivity : ComponentActivity() {
     // ---------- Aufbau ----------
 
     private fun render() {
+        // Fokus merken, damit ein Neuaufbau (z. B. nach dem Abgleich) beim Tippen nicht stört
+        val f = currentFocus as? EditText
+        val fField = f?.tag as? String
+        var fRow: String? = null
+        var p = f?.parent
+        while (p is View) { val tg = (p as View).tag; if (tg is String && tg.startsWith("row:")) { fRow = tg; break }; p = p.parent }
+        val sel = f?.selectionStart ?: 0
         renderTabs()
         content.removeAllViews()
         if (tab == 0) {
             renderRows()
             updateMonthStats()
             content.addView(monthView, FrameLayout.LayoutParams(MATCH, MATCH))
+            if (fRow != null && fField != null) {
+                val target = rowsBox.findViewWithTag<View>(fRow)?.findViewWithTag<View>(fField) as? EditText
+                target?.let { it.requestFocus(); it.setSelection(sel.coerceAtMost(it.text.length)) }
+            }
         } else {
             hideKeyboard()
             content.addView(buildWeekView(tab), FrameLayout.LayoutParams(MATCH, MATCH))
@@ -261,6 +542,8 @@ class MainActivity : ComponentActivity() {
         scroll.addView(col)
 
         col.addView(title("Was brauchen wir diesen Monat?"))
+        monthSyncLine = syncLineView()
+        col.addView(monthSyncLine)
         col.addView(small(
             "Menge und Artikel eintragen, die Menge wird auf die Wochen verteilt.\n" +
             "„da“ = schon zuhause (wird von Woche 1 abgezogen).\n" +
@@ -332,6 +615,7 @@ class MainActivity : ComponentActivity() {
         val wrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
+            tag = "row:" + r.id
         }
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -354,6 +638,7 @@ class MainActivity : ComponentActivity() {
             setOnLongClickListener { calcDialog(r); true }
         }
         val name = field(r.name, if (r.name.isBlank()) "Artikel…" else "", number = false).apply {
+            tag = "name"
             imeOptions = EditorInfo.IME_ACTION_NEXT
             onChange { s ->
                 r.name = s
@@ -365,6 +650,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val have = field(if (r.have > 0) r.have.toString() else "", "–", number = true).apply {
+            tag = "have"
             gravity = Gravity.CENTER
             imeOptions = EditorInfo.IME_ACTION_NEXT
             onChange { s -> r.have = s.toIntOrNull()?.coerceAtLeast(0) ?: 0; rowsChanged() }
@@ -567,6 +853,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun rowsChanged() {
+        lastType = System.currentTimeMillis()
         scheduleSave()
         updateMonthStats()
         renderTabs()
@@ -643,6 +930,8 @@ class MainActivity : ComponentActivity() {
         val done = wk.filter { isDone(it) }
 
         col.addView(title("Woche $week"))
+        weekSyncLine = syncLineView()
+        col.addView(weekSyncLine)
         col.addView(small(
             if (wk.isEmpty()) "Noch nichts für diese Woche."
             else "${done.size} von ${wk.size} erledigt"
