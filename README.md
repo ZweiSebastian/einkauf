@@ -1,0 +1,23 @@
+# Einkauf – Monatsliste → Wocheneinkäufe (Android, Galaxy S23 Ultra)
+
+Tab **Monat**: einfach runterschreiben, was im Monat gebraucht wird – eine Zeile pro Artikel.
+Die App verteilt alles automatisch auf **W1–W4** (oder 5 Wochen), dort wird abgehakt.
+
+## Schreibweise
+| Zeile | Ergebnis |
+|---|---|
+| `Klopapier` | 1×, landet in der Woche mit den wenigsten Artikeln |
+| `8x Milch` oder `Milch 8x` | gleichmäßig verteilt: 2 / 2 / 2 / 2 |
+| `6x Eier` | 2 / 1 / 2 / 1 |
+| `Grillkohle @3` | fest in Woche 3 |
+
+Gleiche Artikel in mehreren Zeilen werden zusammengezählt.
+In einer Wochenliste: **tippen** = abhaken, **lange drücken** = in andere Woche schieben.
+Unten in jeder Woche gibt es ein Feld für Nachträge nur für diese Woche.
+Alles wird nur lokal auf dem Handy gespeichert.
+
+## APK bauen (nur Browser nötig)
+1. Neues Repository auf github.com anlegen.
+2. Diesen Ordner hochladen (inkl. des versteckten Ordners `.github`).
+3. Unter **Actions** läuft „APK bauen“ automatisch (~5 Min.).
+4. Unter **Releases** liegt danach `Einkauf.apk` → auf dem Handy herunterladen und installieren.
