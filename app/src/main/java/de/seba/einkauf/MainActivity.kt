@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     private val orange = 0xFFFFB454.toInt()
 
     /** Eine Zeile der Monatsliste (bearbeitbar). */
-    private class Row(var qty: Int = 1, var name: String = "", var have: Int = 0, var week: Int? = null)
+    private class Row(var qty: Int = 1, var name: String = "", var have: Int = 0, var weeksSel: Set<Int> = emptySet())
 
     private val prefs by lazy { getSharedPreferences("einkauf", Context.MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
@@ -119,7 +119,11 @@ class MainActivity : ComponentActivity() {
                         qty = o.optInt("qty", 1).coerceAtLeast(1),
                         name = o.optString("name", ""),
                         have = o.optInt("have", 0).coerceAtLeast(0),
-                        week = if (o.has("week")) o.optInt("week") else null,
+                        weeksSel = when {
+                            o.has("weeks") -> o.getJSONArray("weeks").let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() }
+                            o.has("week") -> setOf(o.getInt("week")) // Version 2.0
+                            else -> emptySet()
+                        },
                     )
                 }
             } catch (e: Exception) { rows.clear() }
@@ -127,7 +131,7 @@ class MainActivity : ComponentActivity() {
             // Übernahme der alten Textliste aus Version 1.x
             for (l in (prefs.getString("text", "") ?: "").lines()) {
                 val it = Planner.parseLine(l) ?: continue
-                rows += Row(it.qty, it.name, it.have, it.fixedWeek)
+                rows += Row(it.qty, it.name, it.have, it.onlyWeeks)
             }
         }
         rows.removeAll { it.name.isBlank() }
@@ -139,7 +143,7 @@ class MainActivity : ComponentActivity() {
             if (r.name.isBlank()) continue
             arr.put(JSONObject().apply {
                 put("qty", r.qty); put("name", r.name.trim()); put("have", r.have)
-                r.week?.let { put("week", it) }
+                if (r.weeksSel.isNotEmpty()) put("weeks", JSONArray(r.weeksSel.sorted()))
             })
         }
         prefs.edit().putString("items", arr.toString()).apply()
@@ -151,7 +155,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun items(): List<Planner.Item> =
-        rows.filter { it.name.isNotBlank() }.map { Planner.Item(it.name, it.qty, it.week, it.have) }
+        rows.filter { it.name.isNotBlank() }.map { Planner.Item(it.name, it.qty, it.weeksSel, it.have) }
 
     private fun entries(): List<Planner.Entry> = Planner.split(items(), weeks)
 
@@ -232,7 +236,7 @@ class MainActivity : ComponentActivity() {
         col.addView(small(
             "Menge und Artikel eintragen, die Menge wird auf die Wochen verteilt.\n" +
             "„da“ = schon zuhause (wird von Woche 1 abgezogen).\n" +
-            "„Woche“ antippen = alles in eine feste Woche. Artikel leeren = löschen."
+            "„Woche“ antippen = nur bestimmte Wochen, z. B. W3+4. Artikel leeren = löschen."
         ).apply { setPadding(0, dp(4), 0, dp(14)) })
 
         // Spaltenköpfe
@@ -327,20 +331,19 @@ class MainActivity : ComponentActivity() {
             background = rounded(card, 10)
         }
         fun paintWeek() {
-            val w = r.week
-            week.text = if (w == null) "auto" else "W$w"
-            week.setTextColor(if (w == null) dim else blue)
-            week.typeface = if (w == null) Typeface.DEFAULT else Typeface.DEFAULT_BOLD
+            val sel = r.weeksSel.filter { it in 1..weeks }
+            val auto = sel.isEmpty() || sel.size == weeks
+            week.text = weeksLabel(r.weeksSel)
+            week.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (week.text.length > 5) 12f else 14f)
+            week.setTextColor(if (auto) dim else blue)
+            week.typeface = if (auto) Typeface.DEFAULT else Typeface.DEFAULT_BOLD
         }
         paintWeek()
         week.setOnClickListener {
-            val w = r.week
-            r.week = when {
-                w == null -> 1
-                w >= weeks -> null
-                else -> w + 1
+            weeksDialog(r.name.ifBlank { "Wochen" }, r.weeksSel) { sel ->
+                r.weeksSel = sel
+                paintWeek(); rowsChanged()
             }
-            paintWeek(); rowsChanged()
         }
         // Nach dem Artikel direkt in die Menge der nächsten Zeile springen
         name.setOnEditorActionListener { _, id, _ ->
@@ -486,7 +489,7 @@ class MainActivity : ComponentActivity() {
             val item = Planner.parseLine(addEdit.text.toString())
             if (item != null) {
                 rows.removeAll { it.name.isBlank() }
-                rows += Row(item.qty, item.name, 0, week)
+                rows += Row(item.qty, item.name, 0, setOf(week))
                 saveRows()
                 render()
             }
@@ -574,8 +577,11 @@ class MainActivity : ComponentActivity() {
         fun act(label: String, f: () -> Unit) { labels.add(label); handlers.add(f) }
         if (e.qty > 1 && !e.covered) act("Nur teilweise gekauft …") { partialDialog(e) }
         act("Schon zuhause vorhanden …") { stockDialog(e, haveNow) }
-        for (w in 1..weeks) act("Alles in Woche $w") { moveTo(e, w) }
-        act("Automatisch verteilen") { moveTo(e, null) }
+        act("Wochen wählen …") {
+            val cur = rowsNamed(e.name).firstOrNull { it.weeksSel.isNotEmpty() }?.weeksSel ?: emptySet()
+            weeksDialog(e.name, cur) { sel -> moveTo(e, sel) }
+        }
+        act("Auf alle Wochen verteilen") { moveTo(e, emptySet()) }
 
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(e.name)
@@ -584,14 +590,37 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun moveTo(e: Planner.Entry, target: Int?) {
-        val wasChecked = e.key in checked
-        for (r in rowsNamed(e.name)) r.week = target
+    private fun moveTo(e: Planner.Entry, sel: Set<Int>) {
+        for (r in rowsNamed(e.name)) r.weeksSel = sel
         saveRows()
-        if (wasChecked && target != null) {
-            checked.add(Planner.key(target, e.name)); saveChecked()
-        }
         render()
+    }
+
+    /** "auto", "W3", "W1+2", "1+3+4" */
+    private fun weeksLabel(sel: Set<Int>): String {
+        val s = sel.filter { it in 1..weeks }.sorted()
+        return when {
+            s.isEmpty() || s.size == weeks -> "auto"
+            s.size == 1 -> "W${s[0]}"
+            s.size == 2 -> "W${s[0]}+${s[1]}"
+            else -> s.joinToString("+")
+        }
+    }
+
+    /** Mehrfachauswahl der Wochen; nichts oder alles angekreuzt = automatisch auf alle. */
+    private fun weeksDialog(title: String, current: Set<Int>, onOk: (Set<Int>) -> Unit) {
+        val labels = (1..weeks).map { "Woche $it" }.toTypedArray()
+        val checkedArr = BooleanArray(weeks) { (it + 1) in current }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("$title: in welchen Wochen?")
+            .setMultiChoiceItems(labels, checkedArr) { _, which, isChecked -> checkedArr[which] = isChecked }
+            .setPositiveButton("OK") { _, _ ->
+                val sel = (1..weeks).filter { checkedArr[it - 1] }.toSet()
+                onOk(if (sel.size == weeks) emptySet() else sel)
+            }
+            .setNeutralButton("Alle") { _, _ -> onOk(emptySet()) }
+            .setNegativeButton("Abbrechen", null)
+            .show()
     }
 
     private fun partialDialog(e: Planner.Entry) {

@@ -12,14 +12,16 @@ Jede Zeile hat eigene Felder: **Menge | Artikel | da | Woche**.
 | 60 · Bananen · da 4 | 11 / 15 / 15 / 15 |
 | 1 · Müllbeutel | in die Woche mit den wenigsten Artikeln |
 | 6 · Eier · Woche W3 | alle 6 in Woche 3 |
+| 6 · Käse · Woche W3+4 | 3 / 3 nur in Woche 3 und 4 |
+| 2 · Waschmittel · Woche W1+3 | alle zwei Wochen: 1 in W1, 1 in W3 |
 
-„Woche“ antippen schaltet durch: auto → W1 → W2 → … → auto. Artikel leeren = Zeile löschen.
+„Woche“ antippen öffnet eine Auswahl zum Ankreuzen (beliebige Kombination, „Alle“ = automatisch). Artikel leeren = Zeile löschen.
 
 ## Wochenlisten
 **Tippen** = abhaken. **Lange drücken** öffnet:
 - *Nur teilweise gekauft …*: z. B. 4 von 6 bekommen, dann bleiben 2 in dieser Woche offen
 - *Schon zuhause vorhanden …*
-- *Alles in Woche …* / *Automatisch verteilen*
+- *Wochen wählen …* / *Auf alle Wochen verteilen*
 
 Komplett vorrätige Artikel stehen abgehakt mit „alles schon da“ in der Liste.
 Unten in jeder Woche gibt es ein Feld für Nachträge nur für diese Woche („3 Avocados“).

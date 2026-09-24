@@ -7,14 +7,14 @@ package de.seba.einkauf
  *   60 Bananen                -> 15 / 15 / 15 / 15
  *   60 Bananen, 4 schon da    -> 11 / 15 / 15 / 15 (Vorrat wird von vorne abgezogen)
  *   1 Müllbeutel              -> in die Woche mit den wenigsten Artikeln
- *   Woche fest auf 3          -> alles in Woche 3
+ *   Wochen W3+W4              -> nur auf Woche 3 und 4 verteilt
  */
 object Planner {
 
     data class Item(
         val name: String,
         val qty: Int,
-        val fixedWeek: Int? = null,
+        val onlyWeeks: Set<Int> = emptySet(), // leer = alle Wochen (automatisch)
         val have: Int = 0,          // schon vorhanden
     )
 
@@ -70,7 +70,8 @@ object Planner {
             }
         }
         if (s.isEmpty()) return null
-        return Item(s, qty.coerceIn(1, 9999), week, have)
+        val w = week
+        return Item(s, qty.coerceIn(1, 9999), if (w != null) setOf(w) else emptySet(), have)
     }
 
     /** Gleiche Artikel (Groß/klein egal) werden zusammengezählt. */
@@ -84,7 +85,7 @@ object Planner {
             out[k] = if (prev == null) it.copy(name = name)
             else prev.copy(
                 qty = prev.qty + it.qty,
-                fixedWeek = it.fixedWeek ?: prev.fixedWeek,
+                onlyWeeks = it.onlyWeeks.ifEmpty { prev.onlyWeeks },
                 have = prev.have + it.have,
             )
         }
@@ -104,17 +105,19 @@ object Planner {
 
         for (item in merge(items)) {
             val share = IntArray(weeks)
-            val fixed = item.fixedWeek
-            when {
-                fixed != null -> share[(fixed - 1).coerceIn(0, weeks - 1)] = item.qty
-                item.qty <= 1 -> share[leastLoaded()] = 1
-                else -> {
-                    val per = item.qty / weeks
-                    val rem = item.qty % weeks
-                    for (w in 0 until weeks) share[w] = per
-                    // Rest gleichmäßig verteilt, z. B. 2 Stück in 4 Wochen -> Woche 1 und 3
-                    for (i in 0 until rem) share[i * weeks / rem]++
-                }
+            // erlaubte Wochen (0-basiert); leer oder ungültig = alle
+            val allowed = item.onlyWeeks.map { it - 1 }.filter { it in 0 until weeks }.sorted()
+                .ifEmpty { (0 until weeks).toList() }
+            val n = allowed.size
+            if (item.qty <= 1) {
+                // einzelner Artikel: in die erlaubte Woche mit den wenigsten Artikeln
+                share[allowed.minByOrNull { load[it] } ?: leastLoaded()] = 1
+            } else {
+                val per = item.qty / n
+                val rem = item.qty % n
+                for (w in allowed) share[w] = per
+                // Rest gleichmäßig verteilt, z. B. 2 Stück in 4 Wochen -> Woche 1 und 3
+                for (i in 0 until rem) share[allowed[i * n / rem]]++
             }
             // Vorrat zuerst von den frühen Wochen abziehen
             var stock = item.have
