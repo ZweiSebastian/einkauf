@@ -25,7 +25,7 @@
     if (c) {
       cfg = c; store(LS.cfg, cfg);
       history.replaceState(null, '', location.pathname + location.search);
-      setTimeout(() => toast('Mit eurer Liste verbunden'), 300);
+      setTimeout(() => toast('Connected to your shared list'), 300);
     }
   })();
 
@@ -98,7 +98,7 @@
     sheet((box, close) => {
       box.append(h('h2', { text: title }));
       for (const [label, fn] of options) box.append(h('button', { class: 'opt', text: label, onclick: () => { close(); fn(); } }));
-      box.append(h('div', { class: 'btns' }, h('button', { text: 'Abbrechen', onclick: close })));
+      box.append(h('div', { class: 'btns' }, h('button', { text: 'Cancel', onclick: close })));
     });
   }
 
@@ -108,25 +108,25 @@
       const ok = () => { close(); onOk(parseInt(inp.value, 10) || 0); render(); };
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); });
       box.append(h('h2', { text: title }), h('p', { text: message }), inp,
-        h('div', { class: 'btns' }, h('button', { text: 'Abbrechen', onclick: close }), h('button', { class: 'pri', text: 'OK', onclick: ok })));
+        h('div', { class: 'btns' }, h('button', { text: 'Cancel', onclick: close }), h('button', { class: 'pri', text: 'OK', onclick: ok })));
       setTimeout(() => { inp.focus(); inp.select(); }, 50);
     });
   }
 
   function weeksDialog(title, current, onOk) {
     sheet((box, close) => {
-      box.append(h('h2', { text: title + ': in welchen Wochen?' }));
+      box.append(h('h2', { text: title + ': which weeks?' }));
       const boxes = [];
       for (let w = 1; w <= weeks(); w++) {
         const cb = h('input', { type: 'checkbox', checked: current.includes(w) });
         boxes.push(cb);
-        box.append(h('label', { class: 'check' }, cb, 'Woche ' + w));
+        box.append(h('label', { class: 'check' }, cb, 'Week ' + w));
       }
       const done = sel => { close(); onOk(sel); render(); };
       box.append(h('div', { class: 'btns' },
-        h('button', { text: 'Alle', onclick: () => done([]) }),
+        h('button', { text: 'All', onclick: () => done([]) }),
         h('span', { class: 'spacer' }),
-        h('button', { text: 'Abbrechen', onclick: close }),
+        h('button', { text: 'Cancel', onclick: close }),
         h('button', { class: 'pri', text: 'OK', onclick: () => {
           const sel = boxes.map((b, i) => (b.checked ? i + 1 : 0)).filter(Boolean);
           done(sel.length === weeks() ? [] : sel);
@@ -142,28 +142,28 @@
     return s.join('+');
   }
 
-  const fmt = d => (Number.isInteger(d) ? String(d) : String(Math.round(d * 10) / 10).replace('.', ','));
+  const fmt = d => (Number.isInteger(d) ? String(d) : String(Math.round(d * 10) / 10));
   const num = s => { const v = parseFloat(String(s).replace(',', '.')); return isFinite(v) ? v : null; };
 
   function calcDialog(it) {
     sheet((box, close) => {
-      box.append(h('h2', { text: (it.name ? it.name + ': ' : '') + 'Packungsrechner' }));
+      box.append(h('h2', { text: (it.name ? it.name + ': ' : '') + 'Pack calculator' }));
       const field = (label, value, ph) => {
         const inp = h('input', { class: 'fld', type: 'text', inputMode: 'decimal', value, placeholder: ph });
         box.append(h('label', { class: 'lbl', text: label }), inp);
         return inp;
       };
-      const pack = field('Inhalt einer Packung (g, ml, Stück …)', it.perPack ? fmt(it.perPack) : '', 'z. B. 500');
-      const day = field('Verbrauch pro Tag (gleiche Einheit)', it.perDay ? fmt(it.perDay) : '', 'z. B. 300');
-      const days = field('Für wie viele Tage', String(it.days || weeks() * 7), String(weeks() * 7));
+      const pack = field('Contents of one pack (g, ml, pieces …)', it.perPack ? fmt(it.perPack) : '', 'e.g. 500');
+      const day = field('Used per day (same unit)', it.perDay ? fmt(it.perDay) : '', 'e.g. 300');
+      const days = field('For how many days', String(it.days || weeks() * 7), String(weeks() * 7));
       const result = h('div', { class: 'result' });
       box.append(result);
       const update = () => {
         const p = num(pack.value), d = num(day.value), t = num(days.value);
         if (p > 0 && d > 0 && t > 0) {
           const total = d * t;
-          result.textContent = '= ' + Math.ceil(total / p - 1e-9) + ' Packungen  (' + fmt(total) + ' gesamt)';
-        } else result.textContent = 'Packungsinhalt und Verbrauch eintragen';
+          result.textContent = '= ' + Math.ceil(total / p - 1e-9) + ' packs  (' + fmt(total) + ' total)';
+        } else result.textContent = 'Enter pack size and daily use';
       };
       [pack, day, days].forEach(i => i.addEventListener('input', update));
       update();
@@ -176,10 +176,10 @@
         close(); render();
       };
       const btns = h('div', { class: 'btns' });
-      if (it.perPack && it.perDay) btns.append(h('button', { class: 'warn', text: 'Rechner aus', onclick: () => {
+      if (it.perPack && it.perDay) btns.append(h('button', { class: 'warn', text: 'Turn off calculator', onclick: () => {
         touchItem(it.id, { perPack: undefined, perDay: undefined, days: undefined }); close(); render();
       } }));
-      btns.append(h('span', { class: 'spacer' }), h('button', { text: 'Abbrechen', onclick: close }), h('button', { class: 'pri', text: 'Übernehmen', onclick: apply }));
+      btns.append(h('span', { class: 'spacer' }), h('button', { text: 'Cancel', onclick: close }), h('button', { class: 'pri', text: 'Apply', onclick: apply }));
       box.append(btns);
       setTimeout(() => pack.focus(), 50);
     });
@@ -275,7 +275,7 @@
     $tabs.replaceChildren();
     for (let i = 0; i <= W; i++) {
       let label, sub;
-      if (i === 0) { label = 'Monat'; sub = EK.liveItems(doc).filter(it => EK.normalize(it.name)).length; }
+      if (i === 0) { label = 'Month'; sub = EK.liveItems(doc).filter(it => EK.normalize(it.name)).length; }
       else {
         const wk = all.filter(e => e.week === i);
         const open = wk.filter(e => !EK.isDone(doc, e)).length;
@@ -291,23 +291,23 @@
   function syncLine() {
     const dot = h('span', { class: 'dot ' + (syncState === 'ok' ? 'ok' : syncState === 'busy' ? 'busy' : syncState === 'err' ? 'err' : '') });
     let text;
-    if (!cfg) text = 'Nur auf diesem Gerät';
-    else if (syncState === 'err') text = 'Offline – wird später abgeglichen';
-    else if (syncState === 'busy' && !lastSync) text = 'Verbinde …';
-    else text = 'Abgeglichen';
+    if (!cfg) text = 'Only on this device';
+    else if (syncState === 'err') text = 'Offline – will sync later';
+    else if (syncState === 'busy' && !lastSync) text = 'Connecting …';
+    else text = 'Synced';
     return h('div', { class: 'sync', id: 'syncline' }, dot, h('span', { text }),
-      h('button', { class: 'linkbtn', text: cfg ? 'Abgleich' : 'Abgleich einrichten', onclick: settingsDialog }));
+      h('button', { class: 'linkbtn', text: cfg ? 'Sync' : 'Set up sync', onclick: settingsDialog }));
   }
 
   // ----- Monat -----
   function monthView() {
     const W = weeks();
     const root = h('div');
-    root.append(h('h1', { text: 'Was brauchen wir diesen Monat?' }), syncLine());
+    root.append(h('h1', { text: 'What do we need this month?' }), syncLine());
     root.append(h('div', { class: 'muted' },
-      'Menge und Artikel eintragen, die Menge wird auf die Wochen verteilt. „da“ = schon zuhause. ',
-      '„Woche“ antippen = nur bestimmte Wochen. ≡ antippen = Menü (Packungsrechner, löschen), ≡ ziehen = sortieren.'));
-    root.append(h('div', { class: 'cols' }, h('span'), h('span', { text: 'Menge' }), h('span', { class: 'l', text: 'Artikel' }), h('span', { text: 'da' }), h('span', { text: 'Woche' })));
+      'Enter quantity and item – the quantity is split across the weeks. “have” = already at home. ',
+      'Tap “Week” = only certain weeks. Tap ≡ = menu (pack calculator, delete), drag ≡ = reorder.'));
+    root.append(h('div', { class: 'cols' }, h('span'), h('span', { text: 'Qty' }), h('span', { class: 'l', text: 'Item' }), h('span', { text: 'Have' }), h('span', { text: 'Week' })));
 
     const list = h('div', { id: 'rows' });
     const items = EK.liveItems(doc);
@@ -316,15 +316,15 @@
     root.append(list);
 
     root.append(h('div', { class: 'stats', id: 'stats', text: statsText() }));
-    const seg = n => h('button', { class: 'seg' + (W === n ? ' on' : ''), text: n + ' Wochen', onclick: () => {
+    const seg = n => h('button', { class: 'seg' + (W === n ? ' on' : ''), text: n + ' weeks', onclick: () => {
       doc.weeks = { v: n, t: now() }; save(); render();
     } });
-    root.append(h('div', { class: 'line' }, h('span', { class: 'grow', text: 'Aufteilen auf' }), seg(4), seg(5)));
-    root.append(h('button', { class: 'outline', text: 'Neuer Monat – alles leeren', onclick: () => {
+    root.append(h('div', { class: 'line' }, h('span', { class: 'grow', text: 'Split across' }), seg(4), seg(5)));
+    root.append(h('button', { class: 'outline', text: 'New month – clear everything', onclick: () => {
       sheet((box, close) => {
-        box.append(h('h2', { text: 'Neuen Monat anfangen?' }),
-          h('p', { text: 'Die Monatsliste und alle Haken werden gelöscht – auch auf dem anderen Handy.' }),
-          h('div', { class: 'btns' }, h('button', { text: 'Abbrechen', onclick: close }), h('button', { class: 'pri', text: 'Leeren', onclick: () => {
+        box.append(h('h2', { text: 'Start a new month?' }),
+          h('p', { text: 'The month list and all check marks will be deleted – on the other phone too.' }),
+          h('div', { class: 'btns' }, h('button', { text: 'Cancel', onclick: close }), h('button', { class: 'pri', text: 'Clear', onclick: () => {
             const t = now();
             for (const id of Object.keys(doc.items)) if (!doc.items[id].del) doc.items[id] = { del: true, t };
             for (const k of Object.keys(doc.checked)) if (doc.checked[k].v) doc.checked[k] = { v: false, t };
@@ -339,11 +339,11 @@
 
   function statsText() {
     const n = EK.liveItems(doc).filter(it => EK.normalize(it.name)).length;
-    if (!n) return 'Noch nichts eingetragen.';
+    if (!n) return 'Nothing added yet.';
     const all = EK.entries(doc);
     const per = [];
     for (let w = 1; w <= weeks(); w++) per.push('W' + w + ': ' + all.filter(e => e.week === w && !e.covered).length);
-    return n + ' Artikel  →  ' + per.join('  ·  ');
+    return n + (n === 1 ? ' item' : ' items') + '  →  ' + per.join('  ·  ');
   }
   function refreshCounts() {
     renderTabs();
@@ -362,10 +362,10 @@
     const W = weeks();
     const calc = it.perPack > 0 && it.perDay > 0;
     const el = h('div', { class: 'item' });
-    const handle = h('div', { class: 'handle', text: '≡', 'aria-label': 'Menü oder ziehen zum Sortieren' });
+    const handle = h('div', { class: 'handle', text: '≡', 'aria-label': 'Menu, or drag to reorder' });
     const qty = h('input', {
       class: 'num' + (calc ? ' calc' : ''), type: 'text', inputMode: 'numeric', enterKeyHint: 'next',
-      value: String(EK.qtyOf(it, W)), 'data-id': it.id, 'data-f': 'qty', 'aria-label': 'Menge',
+      value: String(EK.qtyOf(it, W)), 'data-id': it.id, 'data-f': 'qty', 'aria-label': 'Quantity',
       oninput: () => {
         const n = Math.max(1, parseInt(qty.value, 10) || 1);
         const cur = doc.items[it.id];
@@ -380,25 +380,25 @@
       onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); name.focus(); } },
     });
     const name = h('input', {
-      type: 'text', value: it.name || '', placeholder: 'Artikel…', enterKeyHint: 'next', autocapitalize: 'sentences',
-      'data-id': it.id, 'data-f': 'name', 'aria-label': 'Artikel',
+      type: 'text', value: it.name || '', placeholder: 'Item…', enterKeyHint: 'next', autocapitalize: 'sentences',
+      'data-id': it.id, 'data-f': 'name', 'aria-label': 'Item',
       oninput: () => { touchItem(it.id, { name: name.value }); typed(); },
       onchange: () => { if (!EK.normalize(name.value)) { deleteItem(it.id); render(); } },
       onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(el); } },
     });
     const have = h('input', {
       class: 'num', type: 'text', inputMode: 'numeric', enterKeyHint: 'next', placeholder: '–',
-      value: it.have > 0 ? String(it.have) : '', 'data-id': it.id, 'data-f': 'have', 'aria-label': 'schon da',
+      value: it.have > 0 ? String(it.have) : '', 'data-id': it.id, 'data-f': 'have', 'aria-label': 'Already have',
       oninput: () => { touchItem(it.id, { have: Math.max(0, parseInt(have.value, 10) || 0) }); typed(); },
       onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(el); } },
     });
     const wl = weeksLabel(it.weeks);
-    const chip = h('button', { class: 'chip' + (wl !== 'auto' ? ' set' : '') + (wl.length > 5 ? ' small' : ''), text: wl, 'aria-label': 'Wochen',
-      onclick: () => weeksDialog(it.name || 'Wochen', it.weeks || [], sel => touchItem(it.id, { weeks: sel })) });
+    const chip = h('button', { class: 'chip' + (wl !== 'auto' ? ' set' : '') + (wl.length > 5 ? ' small' : ''), text: wl, 'aria-label': 'Weeks',
+      onclick: () => weeksDialog(it.name || 'Weeks', it.weeks || [], sel => touchItem(it.id, { weeks: sel })) });
     el.append(h('div', { class: 'row' }, handle, qty, name, have, chip));
     if (calc) {
       el.append(h('div', { class: 'calcnote', text:
-        fmt(it.perDay) + ' pro Tag × ' + (it.days || W * 7) + ' Tage ÷ ' + fmt(it.perPack) + ' pro Packung = ' + EK.qtyOf(it, W) + ' Packungen',
+        fmt(it.perDay) + ' per day × ' + (it.days || W * 7) + ' days ÷ ' + fmt(it.perPack) + ' per pack = ' + EK.qtyOf(it, W) + ' packs',
         onclick: () => calcDialog(doc.items[it.id] ? Object.assign({ id: it.id }, doc.items[it.id]) : it) }));
     }
     attachDrag(handle, el, () => [...list.querySelectorAll('.item[data-live]')], (from, to) => {
@@ -408,10 +408,10 @@
       setOrder(ids); render();
     }, () => {
       const cur = Object.assign({ id: it.id }, doc.items[it.id]);
-      menu(cur.name || 'Zeile', [
-        ['Packungsrechner …', () => calcDialog(cur)],
-        ['Wochen wählen …', () => weeksDialog(cur.name || 'Wochen', cur.weeks || [], sel => touchItem(it.id, { weeks: sel }))],
-        ['Zeile löschen', () => { deleteItem(it.id); render(); }],
+      menu(cur.name || 'Row', [
+        ['Pack calculator …', () => calcDialog(cur)],
+        ['Choose weeks …', () => weeksDialog(cur.name || 'Weeks', cur.weeks || [], sel => touchItem(it.id, { weeks: sel }))],
+        ['Delete row', () => { deleteItem(it.id); render(); }],
       ]);
     });
     el.dataset.live = '1';
@@ -422,11 +422,11 @@
   function newRowEl(list) {
     const el = h('div', { class: 'item' });
     const qty = h('input', { class: 'num', type: 'text', inputMode: 'numeric', enterKeyHint: 'next', placeholder: '1',
-      value: pendingNew.qty, 'data-id': 'new', 'data-f': 'qty', 'aria-label': 'Menge',
+      value: pendingNew.qty, 'data-id': 'new', 'data-f': 'qty', 'aria-label': 'Quantity',
       oninput: () => { pendingNew.qty = qty.value; },
       onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); name.focus(); } } });
-    const name = h('input', { type: 'text', placeholder: 'Artikel…', enterKeyHint: 'next', autocapitalize: 'sentences',
-      'data-id': 'new', 'data-f': 'name', 'aria-label': 'Artikel',
+    const name = h('input', { type: 'text', placeholder: 'Item…', enterKeyHint: 'next', autocapitalize: 'sentences',
+      'data-id': 'new', 'data-f': 'name', 'aria-label': 'Item',
       oninput: () => {
         if (!EK.normalize(name.value)) return;
         const id = uid();
@@ -446,10 +446,10 @@
       },
       onkeydown: e => { if (e.key === 'Enter') e.preventDefault(); } });
     const have = h('input', { class: 'num', type: 'text', inputMode: 'numeric', placeholder: '–', value: pendingNew.have,
-      'data-id': 'new', 'data-f': 'have', 'aria-label': 'schon da', oninput: () => { pendingNew.have = have.value; } });
+      'data-id': 'new', 'data-f': 'have', 'aria-label': 'Already have', oninput: () => { pendingNew.have = have.value; } });
     const wl = weeksLabel(pendingNew.weeks);
-    const chip = h('button', { class: 'chip' + (wl !== 'auto' ? ' set' : ''), text: wl, 'aria-label': 'Wochen',
-      onclick: () => weeksDialog('Neuer Artikel', pendingNew.weeks, sel => { pendingNew.weeks = sel; }) });
+    const chip = h('button', { class: 'chip' + (wl !== 'auto' ? ' set' : ''), text: wl, 'aria-label': 'Weeks',
+      onclick: () => weeksDialog('New item', pendingNew.weeks, sel => { pendingNew.weeks = sel; }) });
     el.append(h('div', { class: 'row' }, h('div', { class: 'handle' }), qty, name, have, chip));
     return el;
   }
@@ -460,8 +460,8 @@
     const wk = EK.entries(doc).filter(e => e.week === week);
     const open = wk.filter(e => !EK.isDone(doc, e));
     const done = wk.filter(e => EK.isDone(doc, e));
-    root.append(h('h1', { text: 'Woche ' + week }), syncLine());
-    root.append(h('div', { class: 'muted', text: wk.length ? done.length + ' von ' + wk.length + ' erledigt' : 'Noch nichts für diese Woche.' }));
+    root.append(h('h1', { text: 'Week ' + week }), syncLine());
+    root.append(h('div', { class: 'muted', text: wk.length ? done.length + ' of ' + wk.length + ' done' : 'Nothing for this week yet.' }));
     if (wk.length) {
       const pct = Math.round(done.length / wk.length * 100);
       root.append(h('div', { class: 'bar' }, h('i', { class: pct === 100 ? 'full' : '', style: 'width:' + pct + '%' })));
@@ -469,7 +469,7 @@
     const openBox = h('div');
     for (const e of open) {
       const el = entryEl(e, false);
-      const handle = h('div', { class: 'handle', text: '≡', 'aria-label': 'Ziehen zum Sortieren' });
+      const handle = h('div', { class: 'handle', text: '≡', 'aria-label': 'Drag to reorder' });
       el.append(handle);
       attachDrag(handle, el, () => [...openBox.children], (from, to) => {
         moveNear(open[from].name, open[to].name, to > from); render();
@@ -480,9 +480,9 @@
     if (open.length && done.length) root.append(h('div', { class: 'sep' }));
     for (const e of done) root.append(entryEl(e, true));
     if (wk.length) root.append(h('div', { class: 'hint', style: 'margin-top:14px',
-      text: 'Tippen = abhaken. Lange drücken oder ≡ antippen = teilweise gekauft, schon zuhause, Wochen. ≡ ziehen = sortieren.' }));
+      text: 'Tap = check off. Long-press or tap ≡ = partly bought, already at home, weeks. Drag ≡ = reorder.' }));
 
-    const inp = h('input', { type: 'text', placeholder: 'Nachtrag, z. B. 3 Avocados', enterKeyHint: 'done', autocapitalize: 'sentences' });
+    const inp = h('input', { type: 'text', placeholder: 'Add for this week, e.g. 3 avocados', enterKeyHint: 'done', autocapitalize: 'sentences' });
     const add = () => {
       const p = EK.parseLine(inp.value);
       if (!p) return;
@@ -490,7 +490,7 @@
       render();
     };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
-    root.append(h('div', { class: 'add' }, inp, h('button', { text: '+', 'aria-label': 'Hinzufügen', onclick: add })));
+    root.append(h('div', { class: 'add' }, inp, h('button', { text: '+', 'aria-label': 'Add', onclick: add })));
     return root;
   }
 
@@ -498,8 +498,8 @@
     const got = EK.boughtOf(doc, e.key);
     const partial = !isDone && got > 0;
     const notes = [];
-    if (partial) notes.push('noch offen · ' + got + ' von ' + e.qty + ' gekauft');
-    if (e.covered) notes.push('alles schon da'); else if (e.have > 0) notes.push(e.have + ' schon da');
+    if (partial) notes.push('still open · ' + got + ' of ' + e.qty + ' bought');
+    if (e.covered) notes.push('all at home already'); else if (e.have > 0) notes.push(e.have + ' already at home');
     const el = h('div', { class: 'entry' + (isDone ? ' done' : '') },
       h('div', { class: 'box' + (isDone ? ' done' : partial ? ' part' : ''), text: isDone ? '✓' : partial ? '½' : '' }),
       h('div', { class: 'etext' },
@@ -516,8 +516,8 @@
 
   function actions(e) {
     const opts = [];
-    if (e.qty > 1 && !e.covered) opts.push(['Nur teilweise gekauft …', () => numberDialog(
-      e.name + ': wie viele gekauft?', 'Von ' + e.qty + ' für diese Woche. Der Rest bleibt offen.', EK.boughtOf(doc, e.key), n => {
+    if (e.qty > 1 && !e.covered) opts.push(['Only partly bought …', () => numberDialog(
+      e.name + ': how many did you buy?', 'Out of ' + e.qty + ' for this week. The rest stays open.', EK.boughtOf(doc, e.key), n => {
         setChecked(e.key, false);
         if (n <= 0) setBought(e.key, 0);
         else if (n >= e.qty) { setBought(e.key, 0); setChecked(e.key, true); }
@@ -526,13 +526,13 @@
       })]);
     const named = itemsNamed(e.name);
     const haveNow = named.reduce((s, it) => s + (it.have || 0), 0);
-    opts.push(['Schon zuhause vorhanden …', () => numberDialog(
-      e.name + ': wie viele schon da?', 'Wird zuerst von den frühen Wochen abgezogen. 0 = nichts vorhanden.', haveNow, n => {
+    opts.push(['Already at home …', () => numberDialog(
+      e.name + ': how many are already at home?', 'Taken off the earliest weeks first. 0 = none at home.', haveNow, n => {
         named.forEach((it, i) => touchItem(it.id, { have: i === 0 ? n : 0 }));
       })]);
     const cur = (named.find(it => it.weeks && it.weeks.length) || {}).weeks || [];
-    opts.push(['Wochen wählen …', () => weeksDialog(e.name, cur, sel => named.forEach(it => touchItem(it.id, { weeks: sel })))]);
-    opts.push(['Auf alle Wochen verteilen', () => { named.forEach(it => touchItem(it.id, { weeks: [] })); render(); }]);
+    opts.push(['Choose weeks …', () => weeksDialog(e.name, cur, sel => named.forEach(it => touchItem(it.id, { weeks: sel })))]);
+    opts.push(['Spread over all weeks', () => { named.forEach(it => touchItem(it.id, { weeks: [] })); render(); }]);
     menu(e.name, opts);
   }
 
@@ -608,7 +608,7 @@
       lastSync = now();
       setSync('ok');
     } catch (e) {
-      console.warn('Abgleich fehlgeschlagen', e);
+      console.warn('Sync failed', e);
       setSync('err');
     }
     syncing = false;
@@ -617,34 +617,34 @@
 
   function settingsDialog() {
     sheet((box, close) => {
-      box.append(h('h2', { text: 'Abgleich zwischen euren Handys' }));
+      box.append(h('h2', { text: 'Sync between your phones' }));
       if (!cfg) {
-        box.append(h('p', { text: 'Füge den Verbindungs-Code ein (beginnt mit EK1-). Danach seht ihr auf beiden Handys dieselbe Liste.' }));
+        box.append(h('p', { text: 'Paste the connection code (starts with EK1-). After that, both phones show the same list.' }));
         const ta = h('textarea', { placeholder: 'EK1-…', autocapitalize: 'off', autocorrect: 'off', spellcheck: false });
         const msg = h('p');
-        box.append(ta, msg, h('div', { class: 'btns' }, h('button', { text: 'Abbrechen', onclick: close }), h('button', { class: 'pri', text: 'Verbinden', onclick: () => {
+        box.append(ta, msg, h('div', { class: 'btns' }, h('button', { text: 'Cancel', onclick: close }), h('button', { class: 'pri', text: 'Connect', onclick: () => {
           const c = EK.decodeConnect(ta.value);
-          if (!c) { msg.textContent = 'Das ist kein gültiger Verbindungs-Code. Er beginnt mit EK1- und muss komplett kopiert sein.'; return; }
+          if (!c) { msg.textContent = 'That is not a valid connection code. It starts with EK1- and must be copied completely.'; return; }
           cfg = c; store(LS.cfg, cfg); close(); lastSync = 0; setSync('busy'); sync(); render();
         } })));
       } else {
         const code = EK.encodeConnect(cfg);
-        box.append(h('p', { text: 'Verbunden. Änderungen werden alle paar Sekunden abgeglichen. Mit diesem Code verbindest du ein weiteres Gerät:' }),
+        box.append(h('p', { text: 'Connected. Changes sync every few seconds. Use this code to connect another device:' }),
           h('div', { class: 'code', text: code }),
           h('div', { class: 'btns' },
-            h('button', { class: 'warn', text: 'Trennen', onclick: () => {
+            h('button', { class: 'warn', text: 'Disconnect', onclick: () => {
               cfg = null; try { localStorage.removeItem(LS.cfg); } catch (e) { /* ok */ }
               syncState = 'off'; close(); render();
             } }),
             h('span', { class: 'spacer' }),
-            h('button', { text: 'Code kopieren', onclick: () => {
-              if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => toast('Kopiert'), () => toast('Bitte Code markieren und kopieren'));
+            h('button', { text: 'Copy code', onclick: () => {
+              if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => toast('Copied'), () => toast('Please select and copy the code'));
             } }),
-            h('button', { class: 'pri', text: 'Fertig', onclick: close })));
+            h('button', { class: 'pri', text: 'Done', onclick: close })));
       }
       const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
       if (!standalone) box.append(h('p', { class: 'hint', style: 'margin-top:14px',
-        text: 'Tipp fürs iPhone: In Safari auf „Teilen“ → „Zum Home-Bildschirm“. Danach die App vom Home-Bildschirm öffnen und dort den Code einfügen. Die App auf dem Home-Bildschirm hat ihren eigenen Speicher.' }));
+        text: 'iPhone tip: in Safari tap “Share” → “Add to Home Screen”. Then open the app from the Home Screen and paste the code there. The Home Screen app has its own storage.' }));
     });
   }
 
