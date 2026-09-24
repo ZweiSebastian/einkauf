@@ -169,12 +169,12 @@ class MainActivity : ComponentActivity() {
         col.addView(title("Was brauchen wir diesen Monat?"))
         col.addView(small(
             "Einfach runterschreiben, eine Zeile pro Artikel.\n" +
-            "8x Milch → verteilt auf alle Wochen  ·  Grill @3 → fest in Woche 3"
+            "60 Bananen → 15 pro Woche  ·  Grillkohle @3 → fest in Woche 3"
         ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
         monthEdit = EditText(this).apply {
             setText(monthText)
-            hint = "Milch 8x\nBrot 4x\nKlopapier\nWaschmittel\nKaffee 2x\n…"
+            hint = "60 Bananen\n8 Milch\n4 Brot\nKlopapier\nWaschmittel\n2 Kaffee\n…"
             setHintTextColor(dim)
             setTextColor(white)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
@@ -377,7 +377,7 @@ class MainActivity : ComponentActivity() {
         }
         row.addView(box, LinearLayout.LayoutParams(dp(26), dp(26)))
         val label = TextView(this).apply {
-            text = if (e.qty > 1) "${e.qty}× ${e.name}" else e.name
+            text = e.label
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTextColor(if (isDone) dim else white)
             if (isDone) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG

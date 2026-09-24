@@ -7,8 +7,9 @@ Die App verteilt alles automatisch auf **W1–W4** (oder 5 Wochen), dort wird ab
 | Zeile | Ergebnis |
 |---|---|
 | `Klopapier` | 1×, landet in der Woche mit den wenigsten Artikeln |
-| `8x Milch` oder `Milch 8x` | gleichmäßig verteilt: 2 / 2 / 2 / 2 |
-| `6x Eier` | 2 / 1 / 2 / 1 |
+| `60 Bananen` | gleichmäßig verteilt: 15 / 15 / 15 / 15 |
+| `8x Milch`, `Milch 8x` oder `Milch 8` | 2× / 2× / 2× / 2× |
+| `6 Eier` | 2 / 1 / 2 / 1 |
 | `Grillkohle @3` | fest in Woche 3 |
 
 Gleiche Artikel in mehreren Zeilen werden zusammengezählt.
