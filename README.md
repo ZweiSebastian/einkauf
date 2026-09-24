@@ -3,22 +3,26 @@
 Tab **Monat**: einfach runterschreiben, was im Monat gebraucht wird – eine Zeile pro Artikel.
 Die App verteilt alles automatisch auf **W1–W4** (oder 5 Wochen), dort wird abgehakt.
 
-## Schreibweise
-| Zeile | Ergebnis |
-|---|---|
-| `Klopapier` | 1×, landet in der Woche mit den wenigsten Artikeln |
-| `60 Bananen` | gleichmäßig verteilt: 15 / 15 / 15 / 15 |
-| `8x Milch`, `Milch 8x` oder `Milch 8` | 2× / 2× / 2× / 2× |
-| `6 Eier` | 2 / 1 / 2 / 1 |
-| `Grillkohle @3` | fest in Woche 3 |
-| `60 Bananen, 4 da` | 4 schon im Haus → Woche 1: 11, danach 15 / 15 / 15 |
+## Monatsliste
+Jede Zeile hat eigene Felder: **Menge | Artikel | da | Woche**.
 
-Gleiche Artikel in mehreren Zeilen werden zusammengezählt.
-In einer Wochenliste: **tippen** = abhaken. **Lange drücken** öffnet:
-- *Nur teilweise gekauft …* – z. B. 4 von 6 bekommen → 2 bleiben in dieser Woche offen
-- *Schon zuhause vorhanden …* – trägt „4 da“ in die Monatsliste ein
+| Eingabe | Ergebnis (4 Wochen) |
+|---|---|
+| 60 · Bananen | 15 / 15 / 15 / 15 |
+| 60 · Bananen · da 4 | 11 / 15 / 15 / 15 |
+| 1 · Müllbeutel | in die Woche mit den wenigsten Artikeln |
+| 6 · Eier · Woche W3 | alle 6 in Woche 3 |
+
+„Woche“ antippen schaltet durch: auto → W1 → W2 → … → auto. Artikel leeren = Zeile löschen.
+
+## Wochenlisten
+**Tippen** = abhaken. **Lange drücken** öffnet:
+- *Nur teilweise gekauft …*: z. B. 4 von 6 bekommen, dann bleiben 2 in dieser Woche offen
+- *Schon zuhause vorhanden …*
 - *Alles in Woche …* / *Automatisch verteilen*
-Unten in jeder Woche gibt es ein Feld für Nachträge nur für diese Woche.
+
+Komplett vorrätige Artikel stehen abgehakt mit „alles schon da“ in der Liste.
+Unten in jeder Woche gibt es ein Feld für Nachträge nur für diese Woche („3 Avocados“).
 Alles wird nur lokal auf dem Handy gespeichert.
 
 ## APK bauen (nur Browser nötig)
