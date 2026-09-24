@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     private val dim = 0xFF555B68.toInt()
     private val blue = 0xFF4F8CFF.toInt()
     private val green = 0xFF3DDC84.toInt()
+    private val orange = 0xFFFFB454.toInt()
 
     private val prefs by lazy { getSharedPreferences("einkauf", Context.MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private var monthText = ""
     private var weeks = 4
     private var checked = mutableSetOf<String>()
+    private var bought = mutableMapOf<String, Int>() // teilweise gekauft: key -> Anzahl
     private var tab = 0 // 0 = Monat, 1..weeks = Woche
 
     // Views
@@ -67,6 +69,11 @@ class MainActivity : ComponentActivity() {
         monthText = prefs.getString("text", "") ?: ""
         weeks = prefs.getInt("weeks", 4).coerceIn(4, 5)
         checked = (prefs.getStringSet("checked", emptySet()) ?: emptySet()).toMutableSet()
+        for (s in prefs.getStringSet("bought", emptySet()) ?: emptySet()) {
+            val i = s.indexOf('|')
+            val n = if (i > 0) s.substring(0, i).toIntOrNull() else null
+            if (n != null) bought[s.substring(i + 1)] = n
+        }
         tab = prefs.getInt("tab", 0).coerceIn(0, weeks)
 
         val root = LinearLayout(this).apply {
@@ -96,7 +103,12 @@ class MainActivity : ComponentActivity() {
 
     private fun entries(): List<Planner.Entry> = Planner.split(Planner.parse(monthText), weeks)
 
-    private fun saveChecked() = prefs.edit().putStringSet("checked", HashSet(checked)).apply()
+    private fun saveChecked() = prefs.edit()
+        .putStringSet("checked", HashSet(checked))
+        .putStringSet("bought", bought.map { "${it.value}|${it.key}" }.toHashSet())
+        .apply()
+
+    private fun isDone(e: Planner.Entry) = e.key in checked || (bought[e.key] ?: 0) >= e.qty
 
     private fun setMonthText(newText: String, updateEditor: Boolean) {
         monthText = newText
@@ -132,7 +144,7 @@ class MainActivity : ComponentActivity() {
                 sub = "${Planner.parse(monthText).size}"
             } else {
                 val wk = all.filter { it.week == i }
-                val open = wk.count { it.key !in checked }
+                val open = wk.count { !isDone(it) }
                 label = "W$i"
                 sub = if (wk.isNotEmpty() && open == 0) "✓" else "$open"
             }
@@ -169,7 +181,7 @@ class MainActivity : ComponentActivity() {
         col.addView(title("Was brauchen wir diesen Monat?"))
         col.addView(small(
             "Einfach runterschreiben, eine Zeile pro Artikel.\n" +
-            "60 Bananen → 15 pro Woche  ·  Grillkohle @3 → fest in Woche 3"
+            "60 Bananen → 15 pro Woche  ·  60 Bananen, 4 da → Woche 1 nur 11\nGrillkohle @3 → fest in Woche 3"
         ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
         monthEdit = EditText(this).apply {
@@ -226,7 +238,7 @@ class MainActivity : ComponentActivity() {
                 .setTitle("Neuen Monat anfangen?")
                 .setMessage("Die Monatsliste und alle Haken werden gelöscht.")
                 .setPositiveButton("Leeren") { _, _ ->
-                    checked.clear(); saveChecked()
+                    checked.clear(); bought.clear(); saveChecked()
                     setMonthText("", updateEditor = true)
                     render()
                 }
@@ -281,8 +293,8 @@ class MainActivity : ComponentActivity() {
         scroll.addView(col)
 
         val wk = entries().filter { it.week == week }
-        val open = wk.filter { it.key !in checked }
-        val done = wk.filter { it.key in checked }
+        val open = wk.filter { !isDone(it) }
+        val done = wk.filter { isDone(it) }
 
         col.addView(title("Woche $week"))
         col.addView(small(
@@ -305,7 +317,7 @@ class MainActivity : ComponentActivity() {
         col.addView(list)
 
         if (wk.isNotEmpty()) {
-            col.addView(small("Lange drücken, um einen Artikel in eine andere Woche zu schieben.")
+            col.addView(small("Lange drücken: nur teilweise gekauft, schon zuhause vorhanden oder in andere Woche schieben.")
                 .apply { setPadding(0, dp(14), 0, 0); setTextColor(dim) })
         }
 
@@ -352,56 +364,137 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun itemRow(e: Planner.Entry, isDone: Boolean): View {
+        val got = bought[e.key] ?: 0
+        val partial = !isDone && got > 0
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), dp(12), dp(4), dp(12))
             isClickable = true
             setOnClickListener {
-                if (isDone) checked.remove(e.key) else checked.add(e.key)
+                if (isDone) { checked.remove(e.key); bought.remove(e.key) }
+                else { checked.add(e.key); bought.remove(e.key) }
                 saveChecked()
                 render()
             }
-            setOnLongClickListener { moveDialog(e); true }
+            setOnLongClickListener { actionDialog(e); true }
         }
         val box = TextView(this).apply {
-            text = if (isDone) "✓" else ""
+            text = when { isDone -> "✓"; partial -> "½"; else -> "" }
             gravity = Gravity.CENTER
-            setTextColor(bg)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextColor(if (partial) orange else bg)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                if (isDone) setColor(green) else { setColor(0); setStroke(dp(2), grey) }
+                when {
+                    isDone -> setColor(green)
+                    partial -> { setColor(0); setStroke(dp(2), orange) }
+                    else -> { setColor(0); setStroke(dp(2), grey) }
+                }
             }
         }
         row.addView(box, LinearLayout.LayoutParams(dp(26), dp(26)))
-        val label = TextView(this).apply {
-            text = e.label
+
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+        }
+        texts.addView(TextView(this).apply {
+            // bei Teilkauf nur noch den offenen Rest anzeigen
+            text = if (partial) e.copy(qty = e.qty - got).label else e.label
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTextColor(if (isDone) dim else white)
             if (isDone) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-            setPadding(dp(14), 0, 0, 0)
-        }
-        row.addView(label, LinearLayout.LayoutParams(0, WRAP, 1f))
+        })
+        val notes = listOfNotNull(
+            if (partial) "noch offen · $got von ${e.qty} gekauft" else null,
+            e.note,
+        )
+        if (notes.isNotEmpty()) texts.addView(TextView(this).apply {
+            text = notes.joinToString("  ·  ")
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextColor(if (partial) orange else grey)
+        })
+        row.addView(texts, LinearLayout.LayoutParams(0, WRAP, 1f))
         return row
     }
 
-    private fun moveDialog(e: Planner.Entry) {
-        val options = (1..weeks).map { "Alles in Woche $it" } + "Automatisch verteilen"
+    private fun actionDialog(e: Planner.Entry) {
+        val item = Planner.parse(monthText).firstOrNull { it.name.equals(e.name, ignoreCase = true) }
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        if (e.qty > 1) actions += "Nur teilweise gekauft …" to { partialDialog(e) }
+        actions += "Schon zuhause vorhanden …" to { stockDialog(e, item?.have ?: 0) }
+        for (w in 1..weeks) actions += "Alles in Woche $w" to { moveTo(e, w) }
+        actions += "Automatisch verteilen" to { moveTo(e, null) }
+
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(e.name)
-            .setItems(options.toTypedArray()) { _, which ->
-                val target = if (which < weeks) which + 1 else null
-                val wasChecked = e.key in checked
-                setMonthText(Planner.setFixedWeek(monthText, e.name, target), updateEditor = true)
-                if (wasChecked && target != null) {
-                    checked.add(Planner.key(target, e.name)); saveChecked()
-                }
-                render()
-            }
+            .setItems(actions.map { it.first }.toTypedArray()) { _, which -> actions[which].second() }
             .setNegativeButton("Abbrechen", null)
             .show()
+    }
+
+    private fun moveTo(e: Planner.Entry, target: Int?) {
+        val wasChecked = e.key in checked
+        setMonthText(Planner.setFixedWeek(monthText, e.name, target), updateEditor = true)
+        if (wasChecked && target != null) {
+            checked.add(Planner.key(target, e.name)); saveChecked()
+        }
+        render()
+    }
+
+    private fun partialDialog(e: Planner.Entry) {
+        numberDialog(
+            title = "${e.name}: wie viele gekauft?",
+            message = "Von ${e.qty} für diese Woche. Der Rest bleibt offen.",
+            initial = bought[e.key] ?: 0,
+        ) { n ->
+            checked.remove(e.key)
+            when {
+                n <= 0 -> bought.remove(e.key)
+                n >= e.qty -> { bought.remove(e.key); checked.add(e.key) }
+                else -> bought[e.key] = n
+            }
+            saveChecked()
+            render()
+        }
+    }
+
+    private fun stockDialog(e: Planner.Entry, current: Int) {
+        numberDialog(
+            title = "${e.name}: wie viele schon da?",
+            message = "Wird zuerst von den frühen Wochen abgezogen. 0 = nichts vorhanden.",
+            initial = current,
+        ) { n ->
+            setMonthText(Planner.setStock(monthText, e.name, n), updateEditor = true)
+            render()
+        }
+    }
+
+    private fun numberDialog(title: String, message: String, initial: Int, onOk: (Int) -> Unit) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(if (initial > 0) initial.toString() else "")
+            setSelection(text.length)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        }
+        val wrap = FrameLayout(this).apply {
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(input)
+        }
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(title)
+            .setMessage(message)
+            .setView(wrap)
+            .setPositiveButton("OK") { _, _ -> onOk(input.text.toString().toIntOrNull() ?: 0) }
+            .setNegativeButton("Abbrechen", null)
+            .create()
+        dialog.setOnShowListener {
+            input.requestFocus()
+            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
     }
 
     // ---------- Bausteine ----------
