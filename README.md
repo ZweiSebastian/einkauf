@@ -15,6 +15,9 @@ Jede Zeile hat eigene Felder: **Menge | Artikel | da | Woche**.
 | 6 · Käse · Woche W3+4 | 3 / 3 nur in Woche 3 und 4 |
 | 2 · Waschmittel · Woche W1+3 | alle zwei Wochen: 1 in W1, 1 in W3 |
 
+**Menge lange drücken** öffnet den Packungsrechner: Inhalt pro Packung + Verbrauch pro Tag → Anzahl Packungen (z. B. 500 g Packung, 300 g/Tag, 28 Tage → 17 Packungen).
+**≡ gedrückt halten und ziehen** sortiert die Liste; die Reihenfolge gilt auch in den Wochenlisten.
+
 „Woche“ antippen öffnet eine Auswahl zum Ankreuzen (beliebige Kombination, „Alle“ = automatisch). Artikel leeren = Zeile löschen.
 
 ## Wochenlisten

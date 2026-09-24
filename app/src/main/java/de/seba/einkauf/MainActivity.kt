@@ -13,6 +13,7 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -45,7 +46,16 @@ class MainActivity : ComponentActivity() {
     private val orange = 0xFFFFB454.toInt()
 
     /** Eine Zeile der Monatsliste (bearbeitbar). */
-    private class Row(var qty: Int = 1, var name: String = "", var have: Int = 0, var weeksSel: Set<Int> = emptySet())
+    private class Row(
+        var qty: Int = 1,
+        var name: String = "",
+        var have: Int = 0,
+        var weeksSel: Set<Int> = emptySet(),
+        // Packungsrechner (optional): Inhalt einer Packung, Verbrauch pro Tag, Tage (null = Wochen × 7)
+        var perPack: Double? = null,
+        var perDay: Double? = null,
+        var days: Int? = null,
+    )
 
     private val prefs by lazy { getSharedPreferences("einkauf", Context.MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
@@ -124,6 +134,9 @@ class MainActivity : ComponentActivity() {
                             o.has("week") -> setOf(o.getInt("week")) // Version 2.0
                             else -> emptySet()
                         },
+                        perPack = if (o.has("perPack")) o.getDouble("perPack") else null,
+                        perDay = if (o.has("perDay")) o.getDouble("perDay") else null,
+                        days = if (o.has("days")) o.getInt("days") else null,
                     )
                 }
             } catch (e: Exception) { rows.clear() }
@@ -144,6 +157,9 @@ class MainActivity : ComponentActivity() {
             arr.put(JSONObject().apply {
                 put("qty", r.qty); put("name", r.name.trim()); put("have", r.have)
                 if (r.weeksSel.isNotEmpty()) put("weeks", JSONArray(r.weeksSel.sorted()))
+                r.perPack?.let { put("perPack", it) }
+                r.perDay?.let { put("perDay", it) }
+                r.days?.let { put("days", it) }
             })
         }
         prefs.edit().putString("items", arr.toString()).apply()
@@ -155,7 +171,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun items(): List<Planner.Item> =
-        rows.filter { it.name.isNotBlank() }.map { Planner.Item(it.name, it.qty, it.weeksSel, it.have) }
+        rows.filter { it.name.isNotBlank() }.map { Planner.Item(it.name, qtyOf(it), it.weeksSel, it.have) }
+
+    private fun hasCalc(r: Row) = (r.perPack ?: 0.0) > 0 && (r.perDay ?: 0.0) > 0
+
+    /** Menge der Zeile; mit Packungsrechner: aufgerundete Packungen für den Zeitraum. */
+    private fun qtyOf(r: Row): Int {
+        if (!hasCalc(r)) return r.qty
+        val days = r.days ?: (weeks * 7)
+        return Math.ceil(r.perDay!! * days / r.perPack!! - 1e-9).toInt().coerceAtLeast(1)
+    }
+
+    private fun fmt(d: Double): String =
+        if (d == Math.floor(d)) d.toLong().toString() else String.format(java.util.Locale.GERMANY, "%.1f", d)
 
     private fun entries(): List<Planner.Entry> = Planner.split(items(), weeks)
 
@@ -236,7 +264,8 @@ class MainActivity : ComponentActivity() {
         col.addView(small(
             "Menge und Artikel eintragen, die Menge wird auf die Wochen verteilt.\n" +
             "„da“ = schon zuhause (wird von Woche 1 abgezogen).\n" +
-            "„Woche“ antippen = nur bestimmte Wochen, z. B. W3+4. Artikel leeren = löschen."
+            "„Woche“ antippen = nur bestimmte Wochen, z. B. W3+4. Artikel leeren = löschen.\n" +
+            "Menge lange drücken = Packungsrechner. ≡ gedrückt halten und ziehen = sortieren."
         ).apply { setPadding(0, dp(4), 0, dp(14)) })
 
         // Spaltenköpfe
@@ -244,6 +273,7 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, dp(6))
         }
+        head.addView(View(this), LinearLayout.LayoutParams(dp(HANDLE_W), 1))
         head.addView(colHead("Menge"), LinearLayout.LayoutParams(dp(QTY_W), WRAP))
         head.addView(colHead("Artikel"), LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(GAP) })
         head.addView(colHead("da"), LinearLayout.LayoutParams(dp(HAVE_W), WRAP).apply { leftMargin = dp(GAP) })
@@ -299,15 +329,29 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun rowView(r: Row): View {
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(3), 0, dp(3))
         }
-        val qty = field(if (r.name.isBlank()) "" else r.qty.toString(), "1", number = true).apply {
+        val calc = hasCalc(r)
+        val qty = field(if (r.name.isBlank() && !calc) "" else qtyOf(r).toString(), "1", number = true).apply {
+            tag = "qty"
             gravity = Gravity.CENTER
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            onChange { s -> r.qty = s.toIntOrNull()?.coerceAtLeast(1) ?: 1; rowsChanged() }
+            if (calc) setTextColor(blue)
+            onChange { s ->
+                val n = s.toIntOrNull()?.coerceAtLeast(1) ?: 1
+                // Menge von Hand geändert -> Rechner für diese Zeile aus
+                if (hasCalc(r) && n != qtyOf(r)) { r.perPack = null; r.perDay = null; r.days = null; setTextColor(white) }
+                r.qty = n
+                rowsChanged()
+            }
+            setOnLongClickListener { calcDialog(r); true }
         }
         val name = field(r.name, if (r.name.isBlank()) "Artikel…" else "", number = false).apply {
             imeOptions = EditorInfo.IME_ACTION_NEXT
@@ -353,19 +397,173 @@ class MainActivity : ComponentActivity() {
             if (id == EditorInfo.IME_ACTION_NEXT || id == EditorInfo.IME_ACTION_DONE) { focusNextRow(r); true } else false
         }
 
+        val handle = dragHandle(wrap, { children(rowsBox) }) { from, to ->
+            if (from in rows.indices && to in rows.indices) {
+                rows.add(to, rows.removeAt(from))
+                saveRows()
+                renderRows()
+                rowsChanged()
+            }
+        }
+        v.addView(handle, LinearLayout.LayoutParams(dp(HANDLE_W), dp(48)))
         v.addView(qty, LinearLayout.LayoutParams(dp(QTY_W), dp(48)))
         v.addView(name, LinearLayout.LayoutParams(0, dp(48), 1f).apply { leftMargin = dp(GAP) })
         v.addView(have, LinearLayout.LayoutParams(dp(HAVE_W), dp(48)).apply { leftMargin = dp(GAP) })
         v.addView(week, LinearLayout.LayoutParams(dp(WEEK_W), dp(48)).apply { leftMargin = dp(GAP) })
-        return v
+        wrap.addView(v)
+
+        if (calc) {
+            val days = r.days ?: (weeks * 7)
+            wrap.addView(TextView(this).apply {
+                text = "${fmt(r.perDay!!)} pro Tag × $days Tage ÷ ${fmt(r.perPack!!)} pro Packung = ${qtyOf(r)} Packungen"
+                setTextColor(grey)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(dp(HANDLE_W + 4), 0, 0, dp(6))
+                setOnClickListener { calcDialog(r) }
+            })
+        }
+        return wrap
+    }
+
+    private fun children(box: LinearLayout): List<View> = (0 until box.childCount).map { box.getChildAt(it) }
+
+    /**
+     * Griff "≡" zum Umsortieren: gedrückt halten und ziehen. Die Nachbarn rutschen
+     * beim Ziehen zur Seite; beim Loslassen wird [onDrop] (von, nach) aufgerufen.
+     */
+    private fun dragHandle(row: View, siblings: () -> List<View>, onDrop: (Int, Int) -> Unit): TextView {
+        val h = TextView(this).apply {
+            text = "≡"
+            gravity = Gravity.CENTER
+            setTextColor(dim)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+        }
+        var startY = 0f
+        var from = -1
+        var target = -1
+        h.setOnTouchListener { v, ev ->
+            val list = siblings()
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    from = list.indexOf(row); target = from; startY = ev.rawY
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    hideKeyboard()
+                    row.elevation = dp(8).toFloat(); row.alpha = 0.92f
+                    h.setTextColor(blue)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (from >= 0) {
+                        row.translationY = ev.rawY - startY
+                        val center = row.top + row.translationY + row.height / 2f
+                        var t = from
+                        for (j in from + 1 until list.size) if (center > list[j].top + list[j].height / 2f) t = j
+                        for (j in from - 1 downTo 0) if (center < list[j].top + list[j].height / 2f) t = j
+                        target = t
+                        for ((j, o) in list.withIndex()) {
+                            if (o === row) continue
+                            val shift = when {
+                                j in (from + 1)..t -> -row.height.toFloat()
+                                j in t until from -> row.height.toFloat()
+                                else -> 0f
+                            }
+                            if (o.translationY != shift) o.animate().translationY(shift).setDuration(120).start()
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    for (o in list) { o.animate().cancel(); o.translationY = 0f }
+                    row.elevation = 0f; row.alpha = 1f
+                    h.setTextColor(dim)
+                    val f = from; val t = target
+                    from = -1
+                    if (f >= 0 && t >= 0 && t != f) onDrop(f, t)
+                    true
+                }
+                else -> false
+            }
+        }
+        return h
+    }
+
+    /** Packungsrechner: Inhalt pro Packung + Verbrauch pro Tag -> Anzahl Packungen. */
+    private fun calcDialog(r: Row) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+        }
+        fun input(label: String, value: String, hintText: String, decimal: Boolean): EditText {
+            box.addView(TextView(this).apply {
+                text = label
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(0, dp(10), 0, 0)
+            })
+            val e = EditText(this).apply {
+                setText(value)
+                hint = hintText
+                inputType = InputType.TYPE_CLASS_NUMBER or
+                    (if (decimal) InputType.TYPE_NUMBER_FLAG_DECIMAL else 0)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setSelectAllOnFocus(true)
+            }
+            box.addView(e)
+            return e
+        }
+        val pack = input("Inhalt einer Packung (g, ml, Stück …)", r.perPack?.let { fmt(it) } ?: "", "z. B. 500", true)
+        val day = input("Verbrauch pro Tag (gleiche Einheit)", r.perDay?.let { fmt(it) } ?: "", "z. B. 300", true)
+        val days = input("Für wie viele Tage", (r.days ?: (weeks * 7)).toString(), "${weeks * 7}", false)
+        val result = TextView(this).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(16), 0, dp(4))
+        }
+        box.addView(result)
+
+        fun num(e: EditText) = e.text.toString().replace(',', '.').toDoubleOrNull()
+        fun update() {
+            val p = num(pack); val d = num(day); val t = num(days)
+            result.text = if (p != null && d != null && t != null && p > 0 && d > 0 && t > 0) {
+                val total = d * t
+                val n = Math.ceil(total / p - 1e-9).toInt()
+                "= $n Packungen  (${fmt(total)} gesamt)"
+            } else "Packungsinhalt und Verbrauch eintragen"
+        }
+        for (e in listOf(pack, day, days)) e.onChange { update() }
+        update()
+
+        val b = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(if (r.name.isBlank()) "Packungsrechner" else "${r.name}: Packungsrechner")
+            .setView(ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Übernehmen") { _, _ ->
+                val p = num(pack); val d = num(day)
+                val t = num(days)?.toInt()
+                if (p != null && d != null && p > 0 && d > 0) {
+                    r.perPack = p; r.perDay = d
+                    r.days = if (t == null || t <= 0 || t == weeks * 7) null else t
+                    r.qty = qtyOf(r)
+                    saveRows(); renderRows(); rowsChanged()
+                }
+            }
+            .setNegativeButton("Abbrechen", null)
+        if (hasCalc(r)) b.setNeutralButton("Rechner aus") { _, _ ->
+            r.perPack = null; r.perDay = null; r.days = null
+            saveRows(); renderRows(); rowsChanged()
+        }
+        val dialog = b.create()
+        dialog.setOnShowListener {
+            pack.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
     }
 
     private fun focusNextRow(r: Row) {
         val i = rows.indexOf(r)
         if (i < 0) return
         if (i == rows.size - 1) { val n = Row(); rows += n; rowsBox.addView(rowView(n)) }
-        val next = rowsBox.getChildAt(i + 1) as? LinearLayout ?: return
-        next.getChildAt(0)?.requestFocus()
+        val next = rowsBox.getChildAt(i + 1) ?: return
+        next.findViewWithTag<View>("qty")?.requestFocus()
     }
 
     private fun rowsChanged() {
@@ -456,7 +654,16 @@ class MainActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, 0)
         }
-        for (e in open) list.addView(itemRow(e, false))
+        val openBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        for (e in open) {
+            val rv = itemRow(e, false) as LinearLayout
+            rv.setBackgroundColor(bg)
+            rv.addView(dragHandle(rv, { children(openBox) }) { from, to ->
+                moveRowsNear(open[from].name, open[to].name, after = to > from)
+            }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            openBox.addView(rv)
+        }
+        list.addView(openBox)
         if (done.isNotEmpty() && open.isNotEmpty()) {
             list.addView(View(this).apply { setBackgroundColor(line) },
                 LinearLayout.LayoutParams(MATCH, dp(1)).apply { topMargin = dp(10); bottomMargin = dp(6) })
@@ -465,7 +672,7 @@ class MainActivity : ComponentActivity() {
         col.addView(list)
 
         if (wk.isNotEmpty()) {
-            col.addView(small("Lange drücken: nur teilweise gekauft, schon zuhause vorhanden oder in andere Woche schieben.")
+            col.addView(small("Lange drücken: teilweise gekauft, schon zuhause, andere Woche. ≡ ziehen = sortieren.")
                 .apply { setPadding(0, dp(14), 0, 0); setTextColor(dim) })
         }
 
@@ -588,6 +795,21 @@ class MainActivity : ComponentActivity() {
             .setItems(labels.toTypedArray()) { _, which -> handlers[which]() }
             .setNegativeButton("Abbrechen", null)
             .show()
+    }
+
+    /** Verschiebt alle Zeilen von Artikel [a] direkt vor bzw. hinter Artikel [b] (Reihenfolge überall). */
+    private fun moveRowsNear(a: String, b: String, after: Boolean) {
+        val moving = rowsNamed(a)
+        if (moving.isEmpty()) return
+        rows.removeAll { r -> moving.any { it === r } }
+        val targets = rowsNamed(b)
+        if (targets.isEmpty()) rows.addAll(moving)
+        else {
+            val idx = if (after) rows.indexOf(targets.last()) + 1 else rows.indexOf(targets.first())
+            rows.addAll(idx, moving)
+        }
+        saveRows()
+        render()
     }
 
     private fun moveTo(e: Planner.Entry, sel: Set<Int>) {
@@ -744,9 +966,10 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
-        private const val QTY_W = 58
+        private const val QTY_W = 52
         private const val HAVE_W = 50
         private const val WEEK_W = 54
         private const val GAP = 6
+        private const val HANDLE_W = 26
     }
 }
