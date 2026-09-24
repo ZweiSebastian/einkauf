@@ -188,7 +188,7 @@ class MainActivity : ComponentActivity() {
             // Übernahme der alten Textliste aus Version 1.x
             for (l in (prefs.getString("text", "") ?: "").lines()) {
                 val it = Planner.parseLine(l) ?: continue
-                rows += Row(it.qty, it.name, it.have, it.onlyWeeks)
+                rows += Row(qty = it.qty, name = it.name, have = it.have, weeksSel = it.onlyWeeks)
             }
         }
         rows.removeAll { it.name.isBlank() }
@@ -985,7 +985,7 @@ class MainActivity : ComponentActivity() {
             val item = Planner.parseLine(addEdit.text.toString())
             if (item != null) {
                 rows.removeAll { it.name.isBlank() }
-                rows += Row(item.qty, item.name, 0, setOf(week))
+                rows += Row(qty = item.qty, name = item.name, have = 0, weeksSel = setOf(week))
                 saveRows()
                 render()
             }
