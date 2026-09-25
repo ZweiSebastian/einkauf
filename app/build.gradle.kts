@@ -7,15 +7,28 @@ android {
     namespace = "de.seba.einkauf"
     compileSdk = 34
 
+    // Fester Schlüssel: neue Versionen lassen sich über die alte installieren
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("einkauf.keystore")
+            storePassword = "android"
+            keyAlias = "einkauf"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "de.seba.einkauf"
         minSdk = 28
         targetSdk = 34
-        versionCode = 7
+        versionCode = 8
         versionName = "3.0"
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
         }

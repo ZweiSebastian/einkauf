@@ -35,6 +35,10 @@ jobs:
         run: |
           grep -E "^e: |error:|What went wrong" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
 
+      - name: Signatur anzeigen
+        run: |
+          "$(ls -d $ANDROID_HOME/build-tools/* | tail -1)/apksigner" verify --print-certs *.apk | grep SHA-256 | while IFS= read -r l; do echo "::notice::$l"; done
+
       - name: Als Download ablegen
         uses: actions/upload-artifact@v4
         with:
